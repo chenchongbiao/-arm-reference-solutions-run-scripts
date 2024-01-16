@@ -37,6 +37,7 @@ help_text () {
 	echo "OPTIONS:"
 	echo "-m, --model				path to model"
 	echo "-d, --distro				distro version, values supported [buildroot, android-fvp, debian, deepin]"
+	echo "-b, --bl33                                bl33, values supported [u-boot, uefi]. This flag valid only for debian"
 	echo "-a, --avb				[OPTIONAL] avb boot, values supported [true, false], DEFAULT: false"
 	echo "-t, --tap-interface			[OPTIONAL] tap interface"
 	echo "-n, --networking			[OPTIONAL] networking, values supported [user, tap, none]"
@@ -87,6 +88,7 @@ check_android_images () {
 
 AVB=false
 NETWORKING=user
+BL33=u-boot
 
 while [[ $# -gt 0 ]]
 do
@@ -119,6 +121,11 @@ do
 		    shift
 		    shift
 		    ;;
+	    -b|--bl33)
+		    BL33="$2"
+		    shift
+		    shift
+		    ;;
 	    -h|--help)
 		    help_text
 		    ;;
@@ -133,9 +140,11 @@ done
 
 [ -z "$MODEL" ] && incorrect_script_use || echo "MODEL=$MODEL"
 [ -z "$DISTRO" ] && incorrect_script_use || echo "DISTRO=$DISTRO"
+[ -z "$BL33" ] && incorrect_script_use || echo "BL33=$BL33"
 echo "TAP_INTERFACE=$TAP_INTERFACE"
 echo "NETWORKING=$NETWORKING"
 echo "AVB=$AVB"
+echo "BL33=$BL33"
 
 if [ ! -f "$MODEL" ]; then
     echo "Path provided for model :$1 does not exist"
@@ -148,6 +157,7 @@ $MODEL --version
 
 DEPLOY_DIR=$RUN_SCRIPTS_DIR/../../output/${DISTRO}/deploy/tc2/
 DEB_MMC_IMAGE_NAME=debian_fs.img
+GRUB_DISK_IMAGE=$DEPLOY_DIR/grub-$DISTRO.img
 
 check_dir_exists_and_exit $DEPLOY_DIR "firmware and kernel images"
 
@@ -171,9 +181,13 @@ case $DISTRO in
 	RSS_CM_PROV_BUNDLE="$DEPLOY_DIR/rss_trusty_encrypted_cm_provisioning_bundle_0.bin"
 	RSS_DM_PROV_BUNDLE="$DEPLOY_DIR/rss_trusty_encrypted_dm_provisioning_bundle.bin"
         ;;
-    debian)
-        DISTRO_MODEL_PARAMS="--data board.dram=${DEPLOY_DIR}/Image@0x80000 \
-                    -C board.mmc.p_mmc_file=$DEPLOY_DIR/$DEB_MMC_IMAGE_NAME"
+     debian)
+        if [[ $BL33 == "uefi" ]]; then
+               DISTRO_MODEL_PARAMS="-C board.virtioblockdevice.image_path=$GRUB_DISK_IMAGE"
+        elif [[ $BL33 == "u-boot" ]]; then
+               DISTRO_MODEL_PARAMS="--data board.dram=${DEPLOY_DIR}/Image@0x80000 \
+                           -C board.mmc.p_mmc_file=$DEPLOY_DIR/$DEB_MMC_IMAGE_NAME"
+        fi
         BL1_IMAGE_FILE="$DEPLOY_DIR/bl1-tc.bin"
         FIP_IMAGE_FILE="$DEPLOY_DIR/fip_gpt-tc.bin"dp
         RSS_ROM_FILE="$DEPLOY_DIR/rss_rom.bin"
@@ -181,8 +195,12 @@ case $DISTRO in
 	RSS_DM_PROV_BUNDLE="$DEPLOY_DIR/rss_encrypted_dm_provisioning_bundle.bin"
         ;;
 	deepin)
-		DISTRO_MODEL_PARAMS="--data board.dram=${DEPLOY_DIR}/Image@0x80000 \
-                    -C board.mmc.p_mmc_file=$DEPLOY_DIR/deepin_fs.img"
+        if [[ $BL33 == "uefi" ]]; then
+               DISTRO_MODEL_PARAMS="-C board.virtioblockdevice.image_path=$GRUB_DISK_IMAGE"
+        elif [[ $BL33 == "u-boot" ]]; then
+               DISTRO_MODEL_PARAMS="--data board.dram=${DEPLOY_DIR}/Image@0x80000 \
+                           -C board.mmc.p_mmc_file=$DEPLOY_DIR/$DEB_MMC_IMAGE_NAME"
+        fi
         BL1_IMAGE_FILE="$DEPLOY_DIR/bl1-tc.bin"
         FIP_IMAGE_FILE="$DEPLOY_DIR/fip_gpt-tc.bin"
         RSS_ROM_FILE="$DEPLOY_DIR/rss_rom.bin"
